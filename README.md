@@ -83,7 +83,6 @@ Accounts ending in `0000` return "account not found".
 - **Next:**
   - A transaction detail and receipt view.
   - Saved beneficiaries.
-  - An axe accessibility check in Playwright.
   - Transfer status lookup by reference after a timeout.
 
 ## Tests
@@ -95,6 +94,11 @@ Accounts ending in `0000` return "account not found".
   - A network failure reconciles to server truth and *keeps a payment that arrived meanwhile*.
   - A lost response is retried with the same key and debited exactly once.
 - `src/features/transactions/TransactionFeed.test.tsx`: newest first and virtualized, hostile text renders inert, error state retry works.
-- `e2e/send-money.spec.ts`: one real-browser run of the whole flow. Checks the exact debit, the optimistic row and the idempotency header.
+- `e2e/send-money.spec.ts`: real browser (Playwright), 5 tests.
+  1. Happy path: optimistic row, idempotency header, exact debit.
+  2. Server failure after the UI showed "sending": rolls back to the server balance, then "Try again" succeeds exactly once.
+  3. Server commits but the response is lost: retried with the same key, debited once.
+  4. Double-clicking Send sends only one request.
+  5. On a 360px phone: the whole flow with the keyboard only, no horizontal scroll, and an **axe** scan with zero WCAG 2.1 AA violations.
 
 See [AI_USAGE.md](AI_USAGE.md) for how AI was used.
