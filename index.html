@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en-NG">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b2a4f" />
+    <meta name="description" content="NovaBiz merchant dashboard — FirstBank NovaPay" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>NovaBiz Merchant Dashboard · FirstBank NovaPay</title>
+    <script>
+      // Apply persisted theme before first paint (no flash of the wrong theme).
+      (function () {
+        try {
+          var t = localStorage.getItem('novabiz:theme');
+          if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          document.documentElement.dataset.theme = t;
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>NovaBiz needs JavaScript. You can still transfer money by dialling *894#.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
