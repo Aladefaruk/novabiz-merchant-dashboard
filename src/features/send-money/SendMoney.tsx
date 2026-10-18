@@ -1,136 +1,170 @@
-import { useEffect, useReducer, useRef, useState } from 'react';
-import { Icon } from '../../components/Icon';
-import { useTransfer, type TransferVariables } from '../../hooks/useTransfer';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Send } from 'lucide-react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import { FormProvider, useForm } from 'react-hook-form';
+import { card } from '../../components/ui';
+import { useTransfer } from '../../hooks/useTransfer';
 import { nipTransferFee } from '../../lib/fees';
-import { addKobo, parseNairaInput } from '../../lib/money';
+import { parseNairaInput } from '../../lib/money';
 import { AmountStep } from './AmountStep';
 import { ConfirmStep } from './ConfirmStep';
 import { RecipientStep } from './RecipientStep';
 import { ResultView } from './ResultView';
 import { ReviewStep } from './ReviewStep';
-import { INITIAL_STATE, STEPS, reducer } from './state';
+import { transferSchema, type TransferForm } from './schema';
+
+export interface StepProps {
+  headingRef: RefObject<HTMLHeadingElement>;
+}
+
+const STEPS = ['Recipient', 'Amount', 'Review', 'Confirm'] as const;
+type Step = (typeof STEPS)[number] | 'Result';
+
+const EMPTY: TransferForm = { bankCode: '', accountNumber: '', amount: '', narration: '' };
 
 export function SendMoney() {
-  const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
-  const [serverPinError, setServerPinError] = useState<string | null>(null);
+  const form = useForm<TransferForm>({ resolver: zodResolver(transferSchema), defaultValues: EMPTY, mode: 'onTouched' });
+  const [step, setStep] = useState<Step>('Recipient');
+  const [recipient, setRecipient] = useState({ accountName: '', bankName: '' });
+  // One Idempotency-Key per transfer INTENT. `details` is what the key was made for;
+  // if the merchant edits anything, the details no longer match and a new key is made.
+  const [intent, setIntent] = useState<{ key: string; details: string } | null>(null);
+  const [pinError, setPinError] = useState<string | null>(null);
   const transfer = useTransfer();
+
+  // Move focus to the new step's heading so keyboard and screen-reader users land in context.
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const isFirstRender = useRef(true);
-
-  // Move focus to the new step's heading so keyboard & screen-reader users land in context.
+  const firstRender = useRef(true);
   useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-    headingRef.current?.focus();
-  }, [state.step, transfer.status]);
+    if (firstRender.current) firstRender.current = false;
+    else headingRef.current?.focus();
+  }, [step, transfer.status]);
 
-  const { draft, step, idempotencyKey } = state;
-  const parsed = parseNairaInput(draft.amountInput);
-  const amountKobo = parsed.ok ? parsed.kobo : null;
-  const stepIndex = STEPS.findIndex((s) => s.id === step);
+  const values = form.watch();
+  const amountKobo = parseNairaInput(values.amount);
+  const stepIndex = STEPS.indexOf(step as (typeof STEPS)[number]);
 
-  const submit = (vars: TransferVariables) => {
-    setServerPinError(null);
-    dispatch({ type: 'go', step: 'result' });
-    transfer.mutate(vars, {
-      onError: (err) => {
-        // Wrong PIN is a definite, user-fixable rejection: send them straight back to the PIN.
-        if (err.code === 'INVALID_PIN') {
-          setServerPinError(err.message);
-          dispatch({ type: 'go', step: 'confirm' });
-        }
+  const goToConfirm = () => {
+    const details = JSON.stringify([values.bankCode, values.accountNumber, recipient.accountName, amountKobo, values.narration]);
+    if (intent?.details !== details) setIntent({ key: crypto.randomUUID(), details });
+    setStep('Confirm');
+  };
+
+  const submit = (pin: string) => {
+    if (!intent || amountKobo === null) return;
+    setPinError(null);
+    setStep('Result');
+    transfer.mutate(
+      {
+        idempotencyKey: intent.key,
+        bankCode: values.bankCode,
+        bankName: recipient.bankName,
+        accountNumber: values.accountNumber,
+        accountName: recipient.accountName,
+        amountKobo,
+        feeKobo: nipTransferFee(amountKobo),
+        narration: values.narration.trim(),
+        pin,
       },
-    });
+      {
+        // A wrong PIN is a definite, fixable rejection: go straight back to the PIN step.
+        onError: (err) => {
+          if (err.code === 'INVALID_PIN') {
+            setPinError(err.message);
+            setStep('Confirm');
+          }
+        },
+      },
+    );
   };
 
-  const onConfirm = (pin: string) => {
-    if (!idempotencyKey || amountKobo === null) return;
-    submit({
-      idempotencyKey,
-      bankCode: draft.bankCode,
-      bankName: draft.bankName,
-      accountNumber: draft.accountNumber,
-      accountName: draft.accountName,
-      amountKobo,
-      feeKobo: nipTransferFee(amountKobo),
-      narration: draft.narration.trim(),
-      pin,
-    });
-  };
-
-  const reset = () => {
+  const startOver = () => {
     transfer.reset();
-    setServerPinError(null);
-    dispatch({ type: 'reset' });
+    form.reset(EMPTY);
+    setIntent(null);
+    setStep('Recipient');
   };
 
   return (
-    <section className="card send" aria-labelledby="send-heading">
-      <div className="card__header">
-        <h2 id="send-heading">
-          <Icon name="send" size={20} /> Send money
-        </h2>
-      </div>
+    <section aria-labelledby="send-heading" className={card}>
+      <h2 id="send-heading" className="mb-4 flex items-center gap-2 text-lg font-bold">
+        <Send aria-hidden className="size-5 text-gold-700 dark:text-gold-400" /> Send money
+      </h2>
 
-      {step !== 'result' && (
-        <ol className="stepper" aria-label="Transfer progress">
+      {step !== 'Result' && (
+        <ol aria-label="Transfer progress" className="mb-5 grid grid-cols-4 gap-1 text-center text-xs">
           {STEPS.map((s, i) => (
-            <li
-              key={s.id}
-              className={`stepper__item${i < stepIndex ? ' is-done' : ''}${i === stepIndex ? ' is-current' : ''}`}
-              aria-current={i === stepIndex ? 'step' : undefined}
-            >
-              <span className="stepper__num" aria-hidden="true">
+            <li key={s} aria-current={i === stepIndex ? 'step' : undefined} className={i === stepIndex ? 'font-bold' : 'text-slate-500 dark:text-slate-400'}>
+              <span
+                aria-hidden
+                className={`mx-auto mb-1 grid size-7 place-items-center rounded-full border-2 font-bold ${
+                  i < stepIndex ? 'border-gold-500 bg-gold-500 text-navy-950' : i === stepIndex ? 'border-navy-800 bg-navy-800 text-white dark:border-gold-400 dark:bg-gold-400 dark:text-navy-950' : 'border-slate-400'
+                }`}
+              >
                 {i < stepIndex ? '✓' : i + 1}
               </span>
-              <span className="stepper__label">{s.label}</span>
-              <span className="visually-hidden">{i < stepIndex ? ' (completed)' : ''}</span>
+              {s}
             </li>
           ))}
         </ol>
       )}
-
-      {/* Polite announcement of step changes for screen readers. */}
-      <p className="visually-hidden" aria-live="polite">
-        {stepIndex >= 0 ? `Step ${stepIndex + 1} of ${STEPS.length}: ${STEPS[stepIndex]!.label}` : ''}
+      <p aria-live="polite" className="sr-only">
+        {stepIndex >= 0 ? `Step ${stepIndex + 1} of 4: ${step}` : ''}
       </p>
 
-      {step === 'recipient' && <RecipientStep draft={draft} dispatch={dispatch} headingRef={headingRef} />}
-      {step === 'amount' && <AmountStep draft={draft} dispatch={dispatch} headingRef={headingRef} />}
-      {step === 'review' && <ReviewStep state={state} dispatch={dispatch} headingRef={headingRef} />}
-      {step === 'confirm' && idempotencyKey && amountKobo !== null && (
-        <ConfirmStep
-          draft={draft}
-          amountKobo={amountKobo}
-          totalKobo={addKobo(amountKobo, nipTransferFee(amountKobo))}
-          idempotencyKey={idempotencyKey}
-          serverPinError={serverPinError}
-          dispatch={dispatch}
-          onSubmit={onConfirm}
-          headingRef={headingRef}
-        />
-      )}
-      {step === 'result' && amountKobo !== null && (
-        <ResultView
-          status={transfer.status}
-          isPaused={transfer.isPaused}
-          failureCount={transfer.failureCount}
-          data={transfer.data}
-          error={transfer.error}
-          amountKobo={amountKobo}
-          accountName={draft.accountName}
-          headingRef={headingRef}
-          // Retry re-submits the SAME variables => same Idempotency-Key.
-          onRetry={() => transfer.variables && submit(transfer.variables)}
-          onEdit={() => {
-            transfer.reset();
-            dispatch({ type: 'go', step: 'amount' });
-          }}
-          onDone={reset}
-        />
-      )}
+      <FormProvider {...form}>
+        {step === 'Recipient' && (
+          <RecipientStep
+            headingRef={headingRef}
+            onNext={(accountName, bankName) => {
+              setRecipient({ accountName, bankName });
+              setStep('Amount');
+            }}
+          />
+        )}
+        {step === 'Amount' && (
+          <AmountStep headingRef={headingRef} accountName={recipient.accountName} onBack={() => setStep('Recipient')} onNext={() => setStep('Review')} />
+        )}
+        {step === 'Review' && amountKobo !== null && (
+          <ReviewStep
+            headingRef={headingRef}
+            accountName={recipient.accountName}
+            bankName={recipient.bankName}
+            accountNumber={values.accountNumber}
+            amountKobo={amountKobo}
+            feeKobo={nipTransferFee(amountKobo)}
+            narration={values.narration}
+            onBack={() => setStep('Amount')}
+            onNext={goToConfirm}
+          />
+        )}
+        {step === 'Confirm' && intent && amountKobo !== null && (
+          <ConfirmStep
+            headingRef={headingRef}
+            amountKobo={amountKobo}
+            accountName={recipient.accountName}
+            reference={intent.key}
+            serverError={pinError}
+            onBack={() => setStep('Review')}
+            onSubmit={submit}
+          />
+        )}
+        {step === 'Result' && amountKobo !== null && (
+          <ResultView
+            headingRef={headingRef}
+            transfer={transfer}
+            amountKobo={amountKobo}
+            accountName={recipient.accountName}
+            // Retry re-sends the SAME variables, so the same Idempotency-Key.
+            onRetry={() => transfer.variables && transfer.mutate(transfer.variables)}
+            onEdit={() => {
+              transfer.reset();
+              setStep('Amount');
+            }}
+            onDone={startOver}
+          />
+        )}
+      </FormProvider>
     </section>
   );
 }

@@ -1,78 +1,61 @@
-import { useState, type Dispatch, type FormEvent, type RefObject } from 'react';
-import { Field } from '../../components/Field';
+import { useState, type FormEvent } from 'react';
 import { Money } from '../../components/Money';
-import { useOnlineStatus } from '../../hooks/useOnlineStatus';
+import { btnGhost, btnPrimary, errorText, hint, input, label } from '../../components/ui';
 import type { Kobo } from '../../lib/money';
-import { validatePin } from '../../lib/validation';
-import type { Action, Draft } from './state';
+import type { StepProps } from './SendMoney';
 
-interface Props {
-  draft: Draft;
-  totalKobo: Kobo;
+interface Props extends StepProps {
   amountKobo: Kobo;
-  idempotencyKey: string;
-  serverPinError: string | null;
-  dispatch: Dispatch<Action>;
+  accountName: string;
+  reference: string;
+  serverError: string | null;
+  onBack: () => void;
   onSubmit: (pin: string) => void;
-  headingRef: RefObject<HTMLHeadingElement>;
 }
 
-export function ConfirmStep({ draft, amountKobo, totalKobo, idempotencyKey, serverPinError, dispatch, onSubmit, headingRef }: Props) {
+/** The PIN lives only in this component's state and is cleared as soon as it's submitted. */
+export function ConfirmStep({ headingRef, amountKobo, accountName, reference, serverError, onBack, onSubmit }: Props) {
   const [pin, setPin] = useState('');
-  const [showErrors, setShowErrors] = useState(false);
-  const online = useOnlineStatus();
-  const pinError = showErrors ? validatePin(pin) : null;
+  const [touched, setTouched] = useState(false);
+  const error = touched && !/^\d{4}$/.test(pin) ? 'Enter your 4-digit transaction PIN.' : serverError;
 
-  const handleSubmit = (e: FormEvent) => {
+  const submit = (e: FormEvent) => {
     e.preventDefault();
-    setShowErrors(true);
-    if (validatePin(pin)) return;
+    setTouched(true);
+    if (!/^\d{4}$/.test(pin)) return;
     onSubmit(pin);
-    setPin(''); // never keep the PIN in component state after use
+    setPin('');
   };
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="step">
-      <h3 ref={headingRef} tabIndex={-1} className="step__title">
-        Confirm with your PIN
-      </h3>
-      <p className="step__lead">
-        You’re sending <strong><Money kobo={amountKobo} /></strong> to <strong>{draft.accountName}</strong>. Total debit{' '}
-        <Money kobo={totalKobo} />.
+    <form onSubmit={submit} noValidate className="space-y-4">
+      <h3 ref={headingRef} tabIndex={-1} className="text-lg font-bold">Confirm with your PIN</h3>
+      <p className="text-slate-600 dark:text-slate-400">
+        Sending <strong className="text-slate-900 dark:text-white"><Money kobo={amountKobo} /></strong> to{' '}
+        <strong className="text-slate-900 dark:text-white">{accountName}</strong>.
       </p>
-
-      <Field label="Transaction PIN" required error={pinError ?? serverPinError} hint="Demo PIN: 1234">
-        {(control) => (
-          <input
-            {...control}
-            type="password"
-            inputMode="numeric"
-            autoComplete="off"
-            maxLength={4}
-            className="pin-input"
-            value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-          />
-        )}
-      </Field>
-
-      {!online && (
-        <p className="step__note step__note--warn" role="status">
-          You’re offline. Your transfer will be sent automatically when you reconnect — it can only go through once.
-        </p>
-      )}
-
-      <p className="step__ref">
-        Transfer reference <code>{idempotencyKey.slice(0, 8).toUpperCase()}</code>
+      <div>
+        <label htmlFor="pin" className={label}>Transaction PIN</label>
+        <input
+          id="pin"
+          type="password"
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={4}
+          className={`${input} max-w-48 text-2xl tracking-[0.5em]`}
+          value={pin}
+          onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+          aria-invalid={!!error}
+          aria-describedby={error ? 'pin-error' : 'pin-hint'}
+        />
+        {error ? <p id="pin-error" className={errorText}>{error}</p> : <p id="pin-hint" className={hint}>Demo PIN: 1234</p>}
+      </div>
+      <p className="text-xs text-slate-600 dark:text-slate-400">
+        Transfer reference <code>{reference.slice(0, 8).toUpperCase()}</code>
       </p>
-
-      <div className="step__actions">
-        <button type="button" className="btn btn--ghost" onClick={() => dispatch({ type: 'go', step: 'review' })}>
-          Back
-        </button>
-        <button type="submit" className="btn btn--primary">
-          Send <Money kobo={amountKobo} />
-        </button>
+      <div className="flex justify-end gap-2">
+        <button type="button" className={btnGhost} onClick={onBack}>Back</button>
+        <button type="submit" className={btnPrimary}>Send <Money kobo={amountKobo} /></button>
       </div>
     </form>
   );

@@ -1,0 +1,34 @@
+@import 'tailwindcss';
+
+/* Dark mode follows the data-theme attribute set by useTheme (and index.html before first paint). */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* FirstBank brand: deep blue + gold. gold-700 is the gold that passes AA as text on white. */
+@theme {
+  --color-navy-950: #041124;
+  --color-navy-900: #071a33;
+  --color-navy-800: #0b2a4f;
+  --color-navy-700: #123a68;
+  --color-gold-300: #f0d488;
+  --color-gold-400: #e2bd4f;
+  --color-gold-500: #d4a62a;
+  --color-gold-700: #7a5a00;
+}
+
+@layer base {
+  body {
+    @apply bg-slate-100 text-slate-900 antialiased dark:bg-navy-950 dark:text-slate-100;
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-navy-800);
+    outline-offset: 2px;
+  }
+  [data-theme='dark'] :focus-visible,
+  header :focus-visible {
+    outline-color: var(--color-gold-300);
+  }
+  [tabindex='-1']:focus {
+    outline: none;
+  }
+}

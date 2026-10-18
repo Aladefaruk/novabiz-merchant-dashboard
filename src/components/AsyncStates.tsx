@@ -1,6 +1,7 @@
+import { AlertTriangle, Inbox, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { ApiError } from '../api/client';
-import { Icon } from './Icon';
+import { btnSecondary } from './ui';
 
 export function friendlyError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -11,17 +12,17 @@ export function friendlyError(error: unknown): string {
   return 'Something went wrong.';
 }
 
-export function ErrorState({ title, error, onRetry, compact }: { title: string; error: unknown; onRetry?: () => void; compact?: boolean }) {
+export function ErrorState({ title, error, onRetry }: { title: string; error: unknown; onRetry?: () => void }) {
   return (
-    <div className={`state state--error${compact ? ' state--compact' : ''}`} role="alert">
-      <Icon name="alert" size={compact ? 18 : 28} />
-      <div>
-        <p className="state__title">{title}</p>
-        <p className="state__body">{friendlyError(error)}</p>
+    <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border border-red-700 bg-red-50 p-4 dark:border-red-400 dark:bg-red-950/40">
+      <AlertTriangle aria-hidden className="size-6 text-red-700 dark:text-red-400" />
+      <div className="min-w-48 flex-1">
+        <p className="font-bold">{title}</p>
+        <p className="text-sm text-slate-600 dark:text-slate-300">{friendlyError(error)}</p>
       </div>
       {onRetry && (
-        <button type="button" className="btn btn--secondary btn--sm" onClick={onRetry}>
-          <Icon name="refresh" size={16} /> Try again
+        <button type="button" className={btnSecondary} onClick={onRetry}>
+          <RefreshCw aria-hidden className="size-4" /> Try again
         </button>
       )}
     </div>
@@ -30,17 +31,17 @@ export function ErrorState({ title, error, onRetry, compact }: { title: string; 
 
 export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="state state--empty" role="status">
-      <Icon name="inbox" size={28} />
-      <div>
-        <p className="state__title">{title}</p>
-        {children && <p className="state__body">{children}</p>}
+    <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-slate-400 p-4">
+      <Inbox aria-hidden className="size-6 text-slate-500" />
+      <div className="min-w-48 flex-1">
+        <p className="font-bold">{title}</p>
+        {children && <p className="text-sm text-slate-600 dark:text-slate-300">{children}</p>}
       </div>
       {action}
     </div>
   );
 }
 
-export function Skeleton({ width = '100%', height = 16, className = '' }: { width?: string | number; height?: number; className?: string }) {
-  return <span className={`skeleton ${className}`} style={{ width, height }} aria-hidden="true" />;
+export function Skeleton({ className = '' }: { className?: string }) {
+  return <span aria-hidden className={`block animate-pulse rounded-md bg-slate-200 dark:bg-navy-700 ${className}`} />;
 }

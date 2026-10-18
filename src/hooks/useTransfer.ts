@@ -1,44 +1,33 @@
-import {
-  notifyManager,
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type InfiniteData,
-  type QueryClient,
-} from '@tanstack/react-query';
+import { notifyManager, useMutation, useQuery, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query';
 import { ApiError, backoffDelay } from '../api/client';
 import { api, mutationKeys, queryKeys } from '../api/endpoints';
-import type { BalanceSummary, Transaction, TransactionFilters, TransactionPage, TransferRequest, TransferResponse } from '../api/types';
-import { matchesFilters } from '../lib/filters';
+import type { BalanceSummary, TransactionPage, TransferRequest, TransferResponse } from '../api/types';
 
-/** Variables for one transfer intent. The key is created once per intent and reused across every retry. */
+/** One transfer intent. The idempotency key is created once per intent and reused on every retry. */
 export interface TransferVariables extends TransferRequest {
   idempotencyKey: string;
   feeKobo: number;
 }
 
-/** What the UI shows optimistically while a transfer is in flight. Contains no PIN. */
+/** What the UI shows while a transfer is in flight. No PIN in here. */
 export interface PendingTransfer {
   idempotencyKey: string;
   amountKobo: number;
   feeKobo: number;
   accountName: string;
-  bankName: string;
   narration: string;
-  submittedAt: string;
 }
 
 const OUTBOX_KEY = ['transfer-outbox'] as const;
 export const MAX_TRANSFER_ATTEMPTS = 3;
 
-/** Overridable so tests don't wait on real backoff. */
-export const transferRetryConfig = { delay: (attempt: number) => backoffDelay(attempt, 600, 4_000) };
+/** Tests set this to () => 0 so they don't wait for real backoff. */
+export const transferRetryConfig = { delay: (attempt: number) => backoffDelay(attempt) };
 
 /**
- * The outbox lives in the query cache (client-only key) so that removing a
- * pending entry and writing the server's authoritative balance can be flushed
- * to React in ONE notifyManager batch — no frame where the deduction is
- * counted twice or not at all.
+ * In-flight transfers ("outbox"). Stored in the query cache under a client-only key
+ * so that removing an entry and writing the new server balance can happen in one
+ * notifyManager.batch — React renders both changes together, no flicker.
  */
 export function usePendingTransfers(): PendingTransfer[] {
   const { data } = useQuery({
@@ -52,37 +41,27 @@ export function usePendingTransfers(): PendingTransfer[] {
   return data;
 }
 
-function updateOutbox(qc: QueryClient, fn: (list: PendingTransfer[]) => PendingTransfer[]) {
-  qc.setQueryData<PendingTransfer[]>(OUTBOX_KEY, (old) => fn(old ?? []));
-}
-
-type FeedData = InfiniteData<TransactionPage, string | null>;
-
-/** Splice a SERVER-CONFIRMED transaction into every cached feed it belongs to (no refetch of N pages). */
-export function insertConfirmedTransaction(qc: QueryClient, tx: Transaction) {
-  for (const query of qc.getQueryCache().findAll({ queryKey: queryKeys.transactionsRoot })) {
-    const filters = (query.queryKey[1] ?? {}) as TransactionFilters;
-    if (!matchesFilters(tx, filters)) continue;
-    qc.setQueryData<FeedData>(query.queryKey, (old) => {
-      if (!old?.pages[0] || old.pages.some((p) => p.items.some((i) => i.id === tx.id))) return old;
-      const [first, ...rest] = old.pages;
-      const headAt = first.headAt && first.headAt > tx.createdAt ? first.headAt : tx.createdAt;
-      return { ...old, pages: [{ ...first, items: [tx, ...first.items], total: first.total + 1, headAt }, ...rest] };
-    });
-  }
+function removeFromOutbox(qc: QueryClient, key: string) {
+  qc.setQueryData<PendingTransfer[]>(OUTBOX_KEY, (list = []) => list.filter((p) => p.idempotencyKey !== key));
 }
 
 /**
- * Re-sync feeds with the server cheaply: trim each cached infinite query to its
- * first page, then refetch — 1 request instead of re-walking every loaded page.
+ * Re-sync the transaction feed with ONE request: trim every cached infinite query
+ * to its first page, then refetch (instead of re-fetching all 20+ loaded pages).
  */
 export function refreshFeedHead(qc: QueryClient) {
-  qc.setQueriesData<FeedData>({ queryKey: queryKeys.transactionsRoot }, (old) =>
+  qc.setQueriesData<InfiniteData<TransactionPage>>({ queryKey: queryKeys.transactionsRoot }, (old) =>
     old ? { pages: old.pages.slice(0, 1), pageParams: old.pageParams.slice(0, 1) } : old,
   );
   return qc.invalidateQueries({ queryKey: queryKeys.transactionsRoot });
 }
 
+/**
+ * Optimistic update WITHOUT touching the server's cached balance:
+ *   displayed balance = server balance − pending transfers   (see useBalance)
+ * So "rolling back" is just removing the pending entry. A snapshot-restore rollback
+ * would wipe out any customer payment that arrived while the transfer was in flight.
+ */
 export function useTransfer() {
   const qc = useQueryClient();
 
@@ -90,55 +69,49 @@ export function useTransfer() {
     mutationKey: mutationKeys.transfer,
     mutationFn: ({ idempotencyKey, feeKobo: _fee, ...body }) => api.createTransfer(body, idempotencyKey),
 
-    // Safe ONLY because every attempt carries the same Idempotency-Key.
-    retry: (failureCount, error) => error instanceof ApiError && error.isRetryable && failureCount < MAX_TRANSFER_ATTEMPTS - 1,
+    // Retrying a POST is only safe because every attempt sends the same Idempotency-Key.
+    // Never retry 4xx (definite rejections).
+    retry: (failureCount, error) => error.isRetryable && failureCount < MAX_TRANSFER_ATTEMPTS - 1,
     retryDelay: (attempt) => transferRetryConfig.delay(attempt),
 
     onMutate: async (vars) => {
-      // Stop any in-flight balance fetch from landing on top of our optimistic state.
-      await qc.cancelQueries({ queryKey: queryKeys.balance });
-      updateOutbox(qc, (list) => [
-        ...list.filter((p) => p.idempotencyKey !== vars.idempotencyKey),
+      await qc.cancelQueries({ queryKey: queryKeys.balance }); // don't let an in-flight poll land on top
+      qc.setQueryData<PendingTransfer[]>(OUTBOX_KEY, (list = []) => [
+        ...list,
         {
           idempotencyKey: vars.idempotencyKey,
           amountKobo: vars.amountKobo,
           feeKobo: vars.feeKobo,
           accountName: vars.accountName,
-          bankName: vars.bankName,
           narration: vars.narration,
-          submittedAt: new Date().toISOString(),
         },
       ]);
     },
 
-    onSuccess: (data, vars) => {
-      // Atomically: drop the optimistic entry + apply the server's authoritative numbers.
+    onSuccess: async (data, vars) => {
+      await refreshFeedHead(qc); // real row is in the feed before the pending row disappears
       notifyManager.batch(() => {
-        updateOutbox(qc, (list) => list.filter((p) => p.idempotencyKey !== vars.idempotencyKey));
-        qc.setQueryData<BalanceSummary>(queryKeys.balance, (old) =>
-          old ? { ...old, availableKobo: data.balanceKobo, latestTransactionAt: data.transaction.createdAt } : old,
-        );
-        insertConfirmedTransaction(qc, data.transaction);
+        removeFromOutbox(qc, vars.idempotencyKey);
+        qc.setQueryData<BalanceSummary>(queryKeys.balance, (old) => old && { ...old, availableKobo: data.balanceKobo });
       });
-      // Background refresh for today's totals; not awaited, the UI is already correct.
-      void qc.invalidateQueries({ queryKey: queryKeys.balance });
+      void qc.invalidateQueries({ queryKey: queryKeys.balance }); // refresh today's totals in the background
     },
 
     onError: async (error, vars) => {
-      if (error.isAmbiguous) {
-        // We do NOT know whether money moved (e.g. committed, then response lost).
-        // Fetch server truth first, then swap it in and drop the pending entry in one batch.
-        const fresh = await api.getBalance().catch(() => null);
-        notifyManager.batch(() => {
-          updateOutbox(qc, (list) => list.filter((p) => p.idempotencyKey !== vars.idempotencyKey));
-          if (fresh) qc.setQueryData(queryKeys.balance, fresh);
-        });
-        if (!fresh) void qc.invalidateQueries({ queryKey: queryKeys.balance });
-        await refreshFeedHead(qc);
-      } else {
-        // Definite rejection (4xx): nothing moved server-side, just drop the optimistic entry.
-        updateOutbox(qc, (list) => list.filter((p) => p.idempotencyKey !== vars.idempotencyKey));
+      if (!error.isAmbiguous) {
+        // Definite rejection (4xx): nothing moved on the server.
+        removeFromOutbox(qc, vars.idempotencyKey);
+        return;
       }
+      // Timeout / network / 5xx: we DON'T KNOW if money moved. Ask the server first,
+      // then swap in its balance and drop the pending entry together.
+      const fresh = await api.getBalance().catch(() => null);
+      notifyManager.batch(() => {
+        removeFromOutbox(qc, vars.idempotencyKey);
+        if (fresh) qc.setQueryData(queryKeys.balance, fresh);
+      });
+      if (!fresh) void qc.invalidateQueries({ queryKey: queryKeys.balance });
+      await refreshFeedHead(qc);
     },
   });
 }

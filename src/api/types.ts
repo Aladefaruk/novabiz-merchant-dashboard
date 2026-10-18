@@ -50,8 +50,6 @@ export interface TransactionPage {
   items: Transaction[];
   nextCursor: string | null;
   total: number;
-  /** createdAt of the newest ledger entry (any filter) when this page was served — drives the "new payments" banner. */
-  headAt: string | null;
 }
 
 export interface Bank {

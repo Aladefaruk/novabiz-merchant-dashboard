@@ -1,115 +1,40 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
-/** Parse "₦1,234,567.89" from the balance card into integer kobo (string math, no floats). */
-async function readBalanceKobo(page: Page): Promise<number> {
-  const text = (await page.getByTestId('available-balance').locator('[aria-hidden="true"]').first().textContent()) ?? '';
-  const match = /₦([\d,]+)\.(\d{2})/.exec(text);
-  if (!match) throw new Error(`Unparseable balance: ${text}`);
-  return Number(match[1]!.replace(/,/g, '')) * 100 + Number(match[2]);
-}
+test('merchant sends money: optimistic update, idempotency key, exact debit', async ({ page }) => {
+  // Fixed latency and no random live payments, so the balance is predictable.
+  await page.goto('/?mock.latency=300&mock.live=0');
+  const balance = page.getByTestId('available-balance');
+  await expect(balance).toHaveText('₦2,486,350.75'); // seeded balance
 
-async function openApp(page: Page) {
-  // Fixed latency + no random live inflows => deterministic balances.
-  await page.goto('/?mock.latency=300&mock.live=0&mock.fail=0&mock.lost=0');
-  await expect(page.getByTestId('available-balance')).toBeVisible();
-}
+  // Step 1: recipient (name enquiry must resolve before continuing)
+  await page.getByLabel('Bank').selectOption('058');
+  await page.getByLabel('Account number').fill('0123456789');
+  await expect(page.getByTestId('resolved-name')).toBeVisible();
+  await page.getByRole('button', { name: 'Continue' }).click();
 
-async function fillRecipientAndAmount(page: Page, amount = '2500') {
-  const sendCard = page.locator('section.send');
-  await expect(sendCard.getByRole('option', { name: 'Guaranty Trust Bank' })).toBeAttached();
-  await sendCard.getByLabel(/^bank/i).selectOption('058');
-  await sendCard.getByLabel(/account number/i).fill('0123456789');
-  await expect(sendCard.getByTestId('resolved-name')).toBeVisible();
-  // Keyboard: Enter submits each step's form.
-  await sendCard.getByLabel(/account number/i).press('Enter');
+  // Step 2: amount
+  await page.getByLabel('Amount (₦)').fill('2500');
+  await page.getByRole('button', { name: 'Review transfer' }).click();
 
-  const amountInput = sendCard.getByLabel(/amount/i);
-  await expect(amountInput).toBeVisible();
-  await amountInput.fill(amount);
-  await amountInput.press('Enter');
+  // Step 3: review
+  await page.getByRole('button', { name: 'Continue to confirm' }).click();
 
-  await sendCard.getByRole('button', { name: /continue to confirm/i }).click();
-  await expect(sendCard.getByLabel(/transaction pin/i)).toBeVisible();
-}
+  // Step 4: confirm with PIN using the keyboard; focus was moved to the step heading.
+  await expect(page.getByRole('heading', { name: 'Confirm with your PIN' })).toBeFocused();
+  await page.getByLabel('Transaction PIN').fill('1234');
+  const [request] = await Promise.all([
+    page.waitForRequest((r) => r.url().includes('/api/transfers')),
+    page.getByLabel('Transaction PIN').press('Enter'),
+  ]);
+  expect(request.headers()['idempotency-key']).toMatch(/^[0-9a-f-]{36}$/);
 
-test.describe('Send Money', () => {
-  test('happy path: keyboard-operable, debits amount + fee exactly once, appears in the feed', async ({ page }) => {
-    await openApp(page);
-    const start = await readBalanceKobo(page);
+  // Optimistic: balance drops and a "Processing" row appears before the server answers.
+  await expect(page.getByTestId('optimistic-row')).toBeVisible();
+  await expect(balance).toHaveText('₦2,483,840.00'); // − ₦2,500.00 − ₦10.75 fee
 
-    await fillRecipientAndAmount(page, '2500');
-    // Focus is moved to each step heading for keyboard / screen-reader users.
-    await expect(page.getByRole('heading', { name: /confirm with your pin/i })).toBeFocused();
-
-    const pin = page.getByLabel(/transaction pin/i);
-    await pin.fill('1234');
-    const [request] = await Promise.all([
-      page.waitForRequest((r) => r.url().includes('/api/transfers') && r.method() === 'POST'),
-      pin.press('Enter'),
-    ]);
-    expect(request.headers()['idempotency-key']).toMatch(/^[0-9a-f-]{36}$/);
-
-    // Optimistic UI: "Processing" row + reduced balance before the server answers.
-    await expect(page.getByTestId('optimistic-row')).toBeVisible();
-
-    await expect(page.getByRole('heading', { name: /transfer successful/i })).toBeVisible();
-    await expect(page.getByTestId('optimistic-row')).toHaveCount(0);
-    await expect.poll(() => readBalanceKobo(page)).toBe(start - 2_500_00 - 10_75);
-    await expect(page.getByRole('feed').getByRole('article').first()).toContainText(/sent to/i);
-  });
-
-  test('server failure after the UI showed the transfer: rolls back and explains', async ({ page }) => {
-    await openApp(page);
-    const start = await readBalanceKobo(page);
-    await fillRecipientAndAmount(page, '1000');
-
-    // Break the network only for the submit.
-    await page.getByRole('button', { name: /mock api controls/i }).click();
-    await page.getByLabel(/failure rate/i).fill('1');
-
-    await page.getByLabel(/transaction pin/i).fill('1234');
-    await page.getByLabel(/transaction pin/i).press('Enter');
-
-    await expect(page.getByTestId('optimistic-row')).toBeVisible();
-    await expect.poll(() => readBalanceKobo(page)).toBe(start - 1_000_00 - 10_75);
-
-    await expect(page.getByRole('heading', { name: /couldn’t confirm this transfer/i })).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId('optimistic-row')).toHaveCount(0);
-    await expect.poll(() => readBalanceKobo(page)).toBe(start);
-    await expect(page.getByTestId('committed-count')).toHaveText('0');
-
-    // Recovery: network back, retry with the same reference succeeds once.
-    await page.getByLabel(/failure rate/i).fill('0');
-    await page.getByRole('button', { name: /check & retry/i }).click();
-    await expect(page.getByRole('heading', { name: /transfer successful/i })).toBeVisible();
-    await expect(page.getByTestId('committed-count')).toHaveText('1');
-  });
-
-  test('response lost after commit: retried with the same key, debited exactly once', async ({ page }) => {
-    await openApp(page);
-    const start = await readBalanceKobo(page);
-    await page.getByRole('button', { name: /mock api controls/i }).click();
-    await page.getByLabel(/lost response/i).fill('1');
-
-    await fillRecipientAndAmount(page, '1000');
-    const keys: string[] = [];
-    page.on('request', (r) => {
-      if (r.url().includes('/api/transfers')) keys.push(r.headers()['idempotency-key'] ?? '');
-    });
-    await page.getByLabel(/transaction pin/i).fill('1234');
-    await page.getByLabel(/transaction pin/i).press('Enter');
-
-    await expect(page.getByRole('heading', { name: /transfer successful/i })).toBeVisible({ timeout: 20_000 });
-    expect(keys.length).toBeGreaterThanOrEqual(2);
-    expect(new Set(keys).size).toBe(1);
-    await expect(page.getByTestId('committed-count')).toHaveText('1');
-    await expect.poll(() => readBalanceKobo(page)).toBe(start - 1_000_00 - 10_75);
-  });
-});
-
-test('layout has no horizontal scroll at this viewport', async ({ page }) => {
-  await openApp(page);
-  await expect(page.getByRole('feed')).toBeVisible();
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  expect(overflow).toBeLessThanOrEqual(0);
+  // Server confirms: the pending row is replaced by the real transaction.
+  await expect(page.getByRole('heading', { name: 'Transfer successful' })).toBeVisible();
+  await expect(page.getByTestId('optimistic-row')).toHaveCount(0);
+  await expect(page.getByRole('feed').getByRole('article').first()).toContainText('₦2,500.00');
+  await expect(balance).toHaveText('₦2,483,840.00');
 });

@@ -1,114 +1,72 @@
-import type { RefObject } from 'react';
+import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
+import type { UseMutationResult } from '@tanstack/react-query';
 import type { ApiError } from '../../api/client';
 import type { TransferResponse } from '../../api/types';
-import { Icon } from '../../components/Icon';
 import { Money } from '../../components/Money';
-import { MAX_TRANSFER_ATTEMPTS } from '../../hooks/useTransfer';
+import { btnGhost, btnPrimary } from '../../components/ui';
+import { MAX_TRANSFER_ATTEMPTS, type TransferVariables } from '../../hooks/useTransfer';
 import type { Kobo } from '../../lib/money';
+import type { StepProps } from './SendMoney';
 
-interface Props {
-  status: 'idle' | 'pending' | 'success' | 'error';
-  isPaused: boolean;
-  failureCount: number;
-  data?: TransferResponse;
-  error: ApiError | null;
+interface Props extends StepProps {
+  transfer: UseMutationResult<TransferResponse, ApiError, TransferVariables>;
   amountKobo: Kobo;
   accountName: string;
-  headingRef: RefObject<HTMLHeadingElement>;
   onRetry: () => void;
   onEdit: () => void;
   onDone: () => void;
 }
 
-export function ResultView({ status, isPaused, failureCount, data, error, amountKobo, accountName, headingRef, onRetry, onEdit, onDone }: Props) {
-  if (status === 'pending' || status === 'idle') {
-    const message = isPaused
-      ? 'Waiting for network… your transfer will be sent when you’re back online.'
-      : failureCount > 0
-        ? `Connection problem — retrying safely (attempt ${failureCount + 1} of ${MAX_TRANSFER_ATTEMPTS})…`
-        : 'Sending…';
+export function ResultView({ headingRef, transfer, amountKobo, accountName, onRetry, onEdit, onDone }: Props) {
+  const box = 'flex flex-col items-center gap-3 py-2 text-center';
+
+  if (transfer.isSuccess) {
     return (
-      <div className="result result--pending">
-        <span className="spinner spinner--lg" aria-hidden="true" />
-        <h3 ref={headingRef} tabIndex={-1} className="step__title">
-          Sending <Money kobo={amountKobo} /> to {accountName}
-        </h3>
-        <p role="status" data-testid="transfer-status">
-          {message}
-        </p>
+      <div className={box}>
+        <CheckCircle2 aria-hidden className="size-14 text-green-700 dark:text-green-400" />
+        <h3 ref={headingRef} tabIndex={-1} className="text-lg font-bold">Transfer successful</h3>
+        <p role="status"><Money kobo={amountKobo} /> sent to {accountName}.</p>
+        <p className="text-sm text-slate-600 dark:text-slate-400">Reference <code>{transfer.data.transaction.reference}</code></p>
+        <button type="button" className={btnPrimary} onClick={onDone}>Send another transfer</button>
       </div>
     );
   }
 
-  if (status === 'success' && data) {
+  if (transfer.isError) {
+    // Ambiguous = timeout / network / 5xx: the server MAY have processed it.
+    const ambiguous = transfer.error.isAmbiguous;
     return (
-      <div className="result result--success">
-        <span className="result__icon result__icon--success" aria-hidden="true">
-          <Icon name="check" size={32} />
-        </span>
-        <h3 ref={headingRef} tabIndex={-1} className="step__title">
-          Transfer successful
+      <div className={box}>
+        <AlertTriangle aria-hidden className="size-14 text-red-700 dark:text-red-400" />
+        <h3 ref={headingRef} tabIndex={-1} className="text-lg font-bold">
+          {ambiguous ? 'We couldn’t confirm this transfer' : 'Transfer failed'}
         </h3>
-        <p role="status" data-testid="transfer-status">
-          <Money kobo={data.transaction.amountKobo} /> sent to {accountName}.
+        <p role="alert" className="text-left text-sm text-slate-600 dark:text-slate-300">
+          {ambiguous
+            ? 'We lost contact before getting an answer. Your balance has been refreshed from the server. Trying again is safe — it reuses the same reference, so you can’t be charged twice.'
+            : `${transfer.error.message} No money left your account.`}
         </p>
-        <dl className="result__details">
-          <div>
-            <dt>Reference</dt>
-            <dd>
-              <code>{data.transaction.reference}</code>
-            </dd>
-          </div>
-          <div>
-            <dt>Fee</dt>
-            <dd>
-              <Money kobo={data.transaction.feeKobo} />
-            </dd>
-          </div>
-        </dl>
-        <div className="step__actions">
-          <button type="button" className="btn btn--primary" onClick={onDone}>
-            Send another transfer
-          </button>
+        <div className="flex gap-2">
+          <button type="button" className={btnGhost} onClick={onEdit}>Edit transfer</button>
+          <button type="button" className={btnPrimary} onClick={onRetry}>Try again</button>
         </div>
+        <p className="text-xs text-slate-600 dark:text-slate-400">Poor connection? You can also dial *894#.</p>
       </div>
     );
   }
 
-  // Error
-  const ambiguous = error?.isAmbiguous ?? false;
+  const message = transfer.isPaused
+    ? 'Waiting for network… it will send when you’re back online.'
+    : transfer.failureCount > 0
+      ? `Connection problem — retrying safely (attempt ${transfer.failureCount + 1} of ${MAX_TRANSFER_ATTEMPTS})…`
+      : 'Sending…';
   return (
-    <div className="result result--error">
-      <span className="result__icon result__icon--error" aria-hidden="true">
-        <Icon name="alert" size={32} />
-      </span>
-      <h3 ref={headingRef} tabIndex={-1} className="step__title">
-        {ambiguous ? 'We couldn’t confirm this transfer' : 'Transfer failed'}
+    <div className={box}>
+      <Loader2 aria-hidden className="size-12 animate-spin text-gold-500" />
+      <h3 ref={headingRef} tabIndex={-1} className="text-lg font-bold">
+        Sending <Money kobo={amountKobo} /> to {accountName}
       </h3>
-      <div role="alert" data-testid="transfer-status">
-        {ambiguous ? (
-          <p>
-            We lost contact with NovaPay before getting a final answer. Your balance and transactions have been refreshed from
-            the server — check them before trying again. <strong>Trying again is safe:</strong> it reuses the same transfer
-            reference, so you can’t be debited twice.
-          </p>
-        ) : (
-          <p>
-            {error?.message ?? 'The transfer was declined.'} <strong>No money left your account.</strong>
-          </p>
-        )}
-      </div>
-      <div className="step__actions">
-        <button type="button" className="btn btn--ghost" onClick={onEdit}>
-          Edit transfer
-        </button>
-        <button type="button" className="btn btn--primary" onClick={onRetry}>
-          {ambiguous ? 'Check & retry' : 'Try again'}
-        </button>
-      </div>
-      <p className="step__note">
-        <Icon name="phone" size={14} /> Poor connection? You can also transfer by dialling <strong>*894#</strong>.
-      </p>
+      <p role="status">{message}</p>
     </div>
   );
 }

@@ -105,12 +105,7 @@ class MockDb {
     const items = matching.slice(startIndex, startIndex + limit);
     const last = items[items.length - 1];
     const hasMore = startIndex + limit < matching.length;
-    return {
-      items,
-      total: matching.length,
-      nextCursor: hasMore && last ? encodeCursor(last) : null,
-      headAt: this.transactions[0]?.createdAt ?? null,
-    };
+    return { items, total: matching.length, nextCursor: hasMore && last ? encodeCursor(last) : null };
   }
 
   nameEnquiry(bankCode: string, accountNumber: string): NameEnquiryResult | null {

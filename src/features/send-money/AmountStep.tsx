@@ -1,114 +1,78 @@
-import { useState, type Dispatch, type FormEvent, type RefObject } from 'react';
-import { Field } from '../../components/Field';
+import { useFormContext } from 'react-hook-form';
 import { Money } from '../../components/Money';
+import { btnGhost, btnPrimary, errorText, hint, input, label } from '../../components/ui';
 import { useBalance } from '../../hooks/useBalance';
 import { nipTransferFee } from '../../lib/fees';
 import { addKobo, parseNairaInput } from '../../lib/money';
-import { NARRATION_MAX_LENGTH } from '../../lib/sanitize';
-import { validateAmount, validateNarration } from '../../lib/validation';
-import type { Action, Draft } from './state';
+import type { StepProps } from './SendMoney';
+import { checkAmount, type TransferForm } from './schema';
 
-interface Props {
-  draft: Draft;
-  dispatch: Dispatch<Action>;
-  headingRef: RefObject<HTMLHeadingElement>;
-}
-
-export function AmountStep({ draft, dispatch, headingRef }: Props) {
-  const [showErrors, setShowErrors] = useState(false);
+export function AmountStep({ headingRef, accountName, onBack, onNext }: StepProps & { accountName: string; onBack: () => void; onNext: () => void }) {
+  const { register, watch, trigger, setError, formState: { errors } } = useFormContext<TransferForm>();
   const { displayedKobo } = useBalance();
+  const amountKobo = parseNairaInput(watch('amount'));
+  const fee = amountKobo !== null ? nipTransferFee(amountKobo) : null;
 
-  const amount = validateAmount(draft.amountInput, displayedKobo);
-  const narrationError = validateNarration(draft.narration);
-  const parsed = parseNairaInput(draft.amountInput);
-  const fee = parsed.ok ? nipTransferFee(parsed.kobo) : null;
-
-  const onSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    setShowErrors(true);
-    if (amount.error || narrationError) return;
-    dispatch({ type: 'go', step: 'review' });
+  const onContinue = async () => {
+    if (!(await trigger(['amount', 'narration'])) || amountKobo === null) return;
+    const problem = checkAmount(amountKobo, displayedKobo);
+    if (problem) return setError('amount', { message: problem }, { shouldFocus: true });
+    onNext();
   };
 
   return (
-    <form onSubmit={onSubmit} noValidate className="step">
-      <h3 ref={headingRef} tabIndex={-1} className="step__title">
-        How much are you sending to <span className="nowrap">{draft.accountName}</span>?
+    <div className="space-y-4">
+      <h3 ref={headingRef} tabIndex={-1} className="text-lg font-bold">
+        How much are you sending to {accountName}?
       </h3>
 
-      <Field
-        label="Amount (₦)"
-        required
-        error={showErrors ? amount.error : null}
-        hint={
-          displayedKobo !== undefined ? (
-            <>
-              Available: <Money kobo={displayedKobo} />
-            </>
-          ) : undefined
-        }
-      >
-        {(control) => (
-          <div className="input-affix">
-            <span className="input-affix__prefix" aria-hidden="true">
-              ₦
-            </span>
-            <input
-              {...control}
-              type="text"
-              inputMode="decimal"
-              autoComplete="off"
-              placeholder="0.00"
-              value={draft.amountInput}
-              onChange={(e) => dispatch({ type: 'update', patch: { amountInput: e.target.value.replace(/[^\d.,]/g, '') } })}
-            />
-          </div>
+      <div>
+        <label htmlFor="amount" className={label}>Amount (₦)</label>
+        <input
+          id="amount"
+          className={`${input} text-xl font-bold`}
+          inputMode="decimal"
+          autoComplete="off"
+          placeholder="0.00"
+          aria-invalid={!!errors.amount}
+          aria-describedby={errors.amount ? 'amount-error' : 'amount-hint'}
+          {...register('amount')}
+        />
+        {errors.amount ? (
+          <p id="amount-error" className={errorText}>{errors.amount.message}</p>
+        ) : (
+          displayedKobo !== undefined && (
+            <p id="amount-hint" className={hint}>Available: <Money kobo={displayedKobo} /></p>
+          )
         )}
-      </Field>
+      </div>
 
-      {parsed.ok && fee !== null && (
-        <dl className="fee-preview" aria-live="polite">
-          <div>
-            <dt>Transfer fee (NIP, incl. VAT)</dt>
-            <dd>
-              <Money kobo={fee} />
-            </dd>
-          </div>
-          <div className="fee-preview__total">
-            <dt>Total debit</dt>
-            <dd>
-              <Money kobo={addKobo(parsed.kobo, fee)} />
-            </dd>
-          </div>
+      {amountKobo !== null && fee !== null && (
+        <dl aria-live="polite" className="rounded-lg bg-slate-100 p-3 text-sm dark:bg-navy-800">
+          <div className="flex justify-between"><dt>Transfer fee (NIP, incl. VAT)</dt><dd><Money kobo={fee} /></dd></div>
+          <div className="mt-1 flex justify-between border-t border-slate-300 pt-1 font-bold dark:border-navy-700"><dt>Total debit</dt><dd><Money kobo={addKobo(amountKobo, fee)} /></dd></div>
         </dl>
       )}
 
-      <Field
-        label="Narration (optional)"
-        error={narrationError}
-        hint={`${draft.narration.length}/${NARRATION_MAX_LENGTH} — appears on the recipient’s statement`}
-      >
-        {(control) => (
-          <input
-            {...control}
-            type="text"
-            autoComplete="off"
-            maxLength={NARRATION_MAX_LENGTH}
-            placeholder="e.g. Payment for flour supply"
-            value={draft.narration}
-            onChange={(e) => dispatch({ type: 'update', patch: { narration: e.target.value } })}
-          />
-        )}
-      </Field>
-
-      <div className="step__actions">
-        <button type="button" className="btn btn--ghost" onClick={() => dispatch({ type: 'go', step: 'recipient' })}>
-          Back
-        </button>
-        <button type="submit" className="btn btn--primary">
-          Review transfer
-        </button>
+      <div>
+        <label htmlFor="narration" className={label}>Narration (optional)</label>
+        <input
+          id="narration"
+          className={input}
+          maxLength={60}
+          autoComplete="off"
+          placeholder="e.g. Payment for flour supply"
+          aria-invalid={!!errors.narration}
+          aria-describedby={errors.narration ? 'narration-error' : undefined}
+          {...register('narration')}
+        />
+        {errors.narration && <p id="narration-error" className={errorText}>{errors.narration.message}</p>}
       </div>
-    </form>
+
+      <div className="flex justify-end gap-2">
+        <button type="button" className={btnGhost} onClick={onBack}>Back</button>
+        <button type="button" className={btnPrimary} onClick={() => void onContinue()}>Review transfer</button>
+      </div>
+    </div>
   );
 }

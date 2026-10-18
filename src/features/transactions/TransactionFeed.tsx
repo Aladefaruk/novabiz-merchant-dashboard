@@ -1,188 +1,127 @@
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Loader2, RefreshCw } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, queryKeys } from '../../api/endpoints';
+import type { TransactionFilters } from '../../api/types';
 import { EmptyState, ErrorState, Skeleton } from '../../components/AsyncStates';
-import { Icon } from '../../components/Icon';
+import { btnGhost, btnSecondary, card } from '../../components/ui';
 import { refreshFeedHead } from '../../hooks/useTransfer';
-import { useUrlFilters } from '../../hooks/useUrlFilters';
-import { hasActiveFilters } from '../../lib/filters';
 import { FeedFilters } from './FeedFilters';
 import { PendingTransfers } from './PendingTransfers';
 import { TransactionRow } from './TransactionRow';
 
-/** Fixed row height (CSS enforces it at every breakpoint) keeps virtualization math O(1). */
-export const ROW_HEIGHT = 76;
-const PREFETCH_THRESHOLD = 15;
-const countFormatter = new Intl.NumberFormat('en-NG');
+const ROW_HEIGHT = 76; // fixed height on every screen size keeps virtualization simple
 
 export function TransactionFeed() {
   const qc = useQueryClient();
-  const { filters, setFilters } = useUrlFilters();
+  const [filters, setFilters] = useState<TransactionFilters>({});
   const rangeInvalid = Boolean(filters.from && filters.to && filters.from > filters.to);
 
-  const {
-    data,
-    isPending,
-    isError,
-    error,
-    refetch,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isFetchNextPageError,
-  } = useInfiniteQuery({
-    queryKey: queryKeys.transactions(filters),
-    queryFn: ({ pageParam, signal }) => api.getTransactions(filters, pageParam, signal),
-    initialPageParam: null as string | null,
-    getNextPageParam: (last) => last.nextCursor,
-    enabled: !rangeInvalid,
-  });
+  const { data, isPending, isError, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } =
+    useInfiniteQuery({
+      queryKey: queryKeys.transactions(filters),
+      queryFn: ({ pageParam, signal }) => api.getTransactions(filters, pageParam, signal),
+      initialPageParam: null as string | null,
+      getNextPageParam: (last) => last.nextCursor,
+      enabled: !rangeInvalid,
+    });
 
   const items = useMemo(() => data?.pages.flatMap((p) => p.items) ?? [], [data]);
-  const total = data?.pages[data.pages.length - 1]?.total ?? 0;
-  const headAt = data?.pages[0]?.headAt ?? null;
+  const total = data?.pages.at(-1)?.total ?? 0;
 
-  // Shares the balance query (polled by BalanceSummary) — no extra request.
-  const { data: latestAt } = useQuery({
-    queryKey: queryKeys.balance,
-    queryFn: ({ signal }) => api.getBalance(signal),
-    select: (b) => b.latestTransactionAt,
-  });
-  const hasNewActivity = Boolean(latestAt && headAt && latestAt > headAt);
-
-  // --- Virtualization (window scroller: natural page scrolling on mobile) ---
+  // Virtualization: only the ~20 rows on screen (+ overscan) are in the DOM, however many are loaded.
   const listRef = useRef<HTMLDivElement>(null);
-  const [scrollMargin, setScrollMargin] = useState(0);
-  useLayoutEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
-    const measure = () => setScrollMargin(el.getBoundingClientRect().top + window.scrollY);
-    measure();
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(document.body);
-    return () => ro.disconnect();
-  }, [items.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const virtualizer = useWindowVirtualizer({
     count: items.length,
     estimateSize: () => ROW_HEIGHT,
     overscan: 10,
-    scrollMargin,
+    scrollMargin: listRef.current?.offsetTop ?? 0,
   });
-  const virtualItems = virtualizer.getVirtualItems();
-  const lastVisibleIndex = virtualItems[virtualItems.length - 1]?.index ?? -1;
+  const virtualRows = virtualizer.getVirtualItems();
+  const lastIndex = virtualRows.at(-1)?.index ?? -1;
 
-  // Infinite scroll: prefetch the next page well before the user hits the bottom.
+  // Infinite scroll: load the next page when we're within 15 rows of the end.
   useEffect(() => {
-    if (lastVisibleIndex >= items.length - PREFETCH_THRESHOLD && hasNextPage && !isFetchingNextPage && !isFetchNextPageError) {
+    if (lastIndex >= items.length - 15 && hasNextPage && !isFetchingNextPage && !isFetchNextPageError) {
       void fetchNextPage();
     }
-  }, [lastVisibleIndex, items.length, hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
+  }, [lastIndex, items.length, hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
 
-  const filtered = hasActiveFilters(filters);
-
-  return (
-    <section className="card feed" aria-labelledby="feed-heading">
-      <div className="card__header">
-        <h2 id="feed-heading">Transactions</h2>
-        {items.length > 0 && (
-          <p className="feed__count">
-            Showing {countFormatter.format(items.length)} of {countFormatter.format(total)}
-          </p>
-        )}
-      </div>
-
-      <FeedFilters filters={filters} onChange={setFilters} />
-
-      <div aria-live="polite" className="feed__live">
-        {hasNewActivity && (
-          <div className="new-activity">
-            <span>
-              <Icon name="arrowDown" size={16} /> New activity on your account
-            </span>
-            <button type="button" className="btn btn--gold btn--sm" onClick={() => { void refreshFeedHead(qc); window.scrollTo({ top: Math.max(0, scrollMargin - 220), behavior: 'smooth' }); }}>
-              Show latest
-            </button>
-          </div>
-        )}
-      </div>
-
-      <PendingTransfers />
-
-      {rangeInvalid ? null : isPending ? (
-        <div className="feed__skeleton" aria-busy="true">
-          <span className="visually-hidden" role="status">Loading transactions…</span>
+  const renderBody = () => {
+    if (rangeInvalid) return null;
+    if (isPending) {
+      return (
+        <div aria-busy="true" className="space-y-3">
+          <span className="sr-only" role="status">Loading transactions…</span>
           {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="tx-row tx-row--skeleton">
-              <Skeleton width={40} height={40} />
-              <div className="tx-row__main">
-                <Skeleton width="55%" />
-                <Skeleton width="80%" height={12} />
-              </div>
-              <Skeleton width={90} />
+            <Skeleton key={i} className="h-14" />
+          ))}
+        </div>
+      );
+    }
+    // Only a first-page failure replaces the list. (In React Query v5 a failed
+    // fetchNextPage ALSO sets isError, but keeps data — handled in the footer.)
+    if (isError && !data) {
+      return <ErrorState title="We couldn’t load your transactions" error={error} onRetry={() => void refetch()} />;
+    }
+    if (items.length === 0) {
+      return Object.keys(filters).some((k) => filters[k as keyof TransactionFilters]) ? (
+        <EmptyState
+          title="No transactions match these filters"
+          action={<button type="button" className={btnSecondary} onClick={() => setFilters({})}>Clear filters</button>}
+        />
+      ) : (
+        <EmptyState title="No transactions yet">Share your NovaBiz QR code to start receiving payments.</EmptyState>
+      );
+    }
+
+    return (
+      <>
+        <div ref={listRef} role="feed" aria-busy={isFetchingNextPage} aria-label="Transactions" className="relative" style={{ height: virtualizer.getTotalSize() }}>
+          {virtualRows.map((row) => (
+            <div
+              key={items[row.index]!.id}
+              className="absolute top-0 left-0 w-full"
+              style={{ transform: `translateY(${row.start - virtualizer.options.scrollMargin}px)` }}
+            >
+              <TransactionRow tx={items[row.index]!} index={row.index} total={total} />
             </div>
           ))}
         </div>
-      ) : isError && !data ? (
-        // Only a FIRST-page failure replaces the list. In v5 a failed fetchNextPage also sets
-        // status 'error' but keeps data — that case is handled inline in the footer below.
-        <ErrorState title="We couldn’t load your transactions" error={error} onRetry={() => void refetch()} />
-      ) : items.length === 0 ? (
-        filtered ? (
-          <EmptyState
-            title="No transactions match these filters"
-            action={<button type="button" className="btn btn--secondary btn--sm" onClick={() => setFilters({})}>Clear filters</button>}
-          >
-            Try a wider date range or a different status.
-          </EmptyState>
-        ) : (
-          <EmptyState title="No transactions yet">
-            Share your NovaBiz QR code or *894# merchant code to start receiving payments.
-          </EmptyState>
-        )
-      ) : (
-        <>
-          <div
-            ref={listRef}
-            role="feed"
-            aria-busy={isFetchingNextPage}
-            aria-labelledby="feed-heading"
-            className="feed__list"
-            style={{ height: virtualizer.getTotalSize() }}
-          >
-            {virtualItems.map((v) => {
-              const tx = items[v.index]!;
-              return (
-                <div
-                  key={tx.id}
-                  className="feed__item"
-                  style={{ height: v.size, transform: `translateY(${v.start - scrollMargin}px)` }}
-                >
-                  <TransactionRow tx={tx} index={v.index} setSize={total} />
-                </div>
-              );
-            })}
-          </div>
 
-          <div className="feed__footer">
-            {isFetchingNextPage ? (
-              <p role="status" className="feed__loading-more">
-                <span className="spinner" aria-hidden="true" /> Loading more transactions…
-              </p>
-            ) : isFetchNextPageError ? (
-              <ErrorState compact title="Couldn’t load more transactions" error={error} onRetry={() => void fetchNextPage()} />
-            ) : hasNextPage ? (
-              <button type="button" className="btn btn--secondary btn--sm" onClick={() => void fetchNextPage()}>
-                Load more
-              </button>
-            ) : (
-              <p className="feed__end">You’ve reached the end · {countFormatter.format(total)} transactions</p>
-            )}
-          </div>
-        </>
-      )}
+        <div className="flex justify-center pt-4 text-sm text-slate-600 dark:text-slate-400">
+          {isFetchingNextPage ? (
+            <p role="status" className="flex items-center gap-2">
+              <Loader2 aria-hidden className="size-4 animate-spin" /> Loading more…
+            </p>
+          ) : isFetchNextPageError ? (
+            <ErrorState title="Couldn’t load more transactions" error={error} onRetry={() => void fetchNextPage()} />
+          ) : hasNextPage ? (
+            <button type="button" className={btnSecondary} onClick={() => void fetchNextPage()}>
+              Load more
+            </button>
+          ) : (
+            <p>You’ve reached the end · {total} transactions</p>
+          )}
+        </div>
+      </>
+    );
+  };
+
+  return (
+    <section aria-labelledby="feed-heading" className={card}>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 id="feed-heading" className="text-lg font-bold">
+          Transactions
+        </h2>
+        <button type="button" className={btnGhost} onClick={() => void refreshFeedHead(qc)}>
+          <RefreshCw aria-hidden className="size-4" /> Refresh
+        </button>
+      </div>
+      <FeedFilters filters={filters} onChange={setFilters} rangeInvalid={rangeInvalid} />
+      <PendingTransfers />
+      {renderBody()}
     </section>
   );
 }

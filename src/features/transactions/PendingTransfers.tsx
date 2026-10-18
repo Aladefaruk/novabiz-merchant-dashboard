@@ -1,40 +1,34 @@
-import { Icon } from '../../components/Icon';
+import { Send } from 'lucide-react';
 import { Money } from '../../components/Money';
 import { StatusBadge } from '../../components/StatusBadge';
 import { usePendingTransfers } from '../../hooks/useTransfer';
-import { toSafeDisplayText } from '../../lib/sanitize';
 
-/** Optimistic rows: transfers the merchant just submitted that the server hasn't confirmed yet. */
+/** Optimistic rows: transfers submitted but not yet confirmed by the server. */
 export function PendingTransfers() {
   const pending = usePendingTransfers();
   if (pending.length === 0) return null;
 
   return (
-    <ul className="pending-list" aria-label="Transfers in progress">
+    <ul aria-label="Transfers in progress" className="mb-1">
       {pending.map((p) => (
-        <li key={p.idempotencyKey} className="tx-row tx-row--debit tx-row--optimistic" data-testid="optimistic-row">
-          <span className="tx-row__icon tx-row__icon--debit" aria-hidden="true">
-            <Icon name="send" size={16} />
+        <li
+          key={p.idempotencyKey}
+          data-testid="optimistic-row"
+          className="mb-1 grid h-[76px] grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-x-3 rounded-xl bg-blue-50 px-1 dark:bg-blue-950/40"
+        >
+          <span aria-hidden className="grid size-10 place-items-center rounded-xl bg-white text-navy-800 dark:bg-navy-800 dark:text-gold-300">
+            <Send className="size-4" />
           </span>
-          <div className="tx-row__main">
-            <p className="tx-row__title">
-              <span className="visually-hidden">Sending to </span>
-              {toSafeDisplayText(p.accountName, 60)}
+          <div className="min-w-0">
+            <p className="truncate font-semibold">
+              <span className="sr-only">Sending to </span>
+              {p.accountName}
             </p>
-            <p className="tx-row__desc">{toSafeDisplayText(p.narration) || p.bankName}</p>
+            <p className="truncate text-sm text-slate-600 dark:text-slate-400">{p.narration || 'Transfer'}</p>
           </div>
-          <div className="tx-row__meta">
-            <span className="tx-row__channel">Transfer</span>
-            <span>Just now</span>
-          </div>
-          <div className="tx-row__status">
+          <div className="flex flex-col items-end gap-0.5">
+            <Money kobo={-p.amountKobo} signed className="font-bold" />
             <StatusBadge status="processing" />
-          </div>
-          <div className="tx-row__amount">
-            <Money kobo={-p.amountKobo} signed className="amount amount--debit" />
-            <span className="tx-row__fee">
-              + <Money kobo={p.feeKobo} /> fee
-            </span>
           </div>
         </li>
       ))}

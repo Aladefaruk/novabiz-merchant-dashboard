@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { initMockConfig } from './mocks/config';
 import { createQueryClient } from './queryClient';
-import './styles/global.css';
+import './index.css';
 
 async function bootstrap() {
   // No real backend exists: the mock API is part of the product for this exercise, so it runs in every build.

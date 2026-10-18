@@ -1,103 +1,56 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useId, useState, useSyncExternalStore } from 'react';
+import { SlidersHorizontal, X } from 'lucide-react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { queryKeys } from '../../api/endpoints';
-import { Icon } from '../../components/Icon';
+import { btnGhost, btnSecondary } from '../../components/ui';
 import { DEFAULT_MOCK_CONFIG, getMockConfig, setMockConfig, subscribeMockConfig } from '../../mocks/config';
 import { db } from '../../mocks/db';
 
-const percentFormatter = new Intl.NumberFormat('en-NG', { style: 'percent' });
+const percent = new Intl.NumberFormat('en-NG', { style: 'percent' });
 
-/**
- * Chaos controls for the mock API — so reviewers can *see* error, retry,
- * rollback and idempotency behaviour without editing code.
- */
+/** Lets a reviewer break the (fake) network on purpose to see the error / retry / rollback paths. */
 export function MockControls({ onClose }: { onClose: () => void }) {
-  const id = useId();
   const qc = useQueryClient();
-  const config = useSyncExternalStore(subscribeMockConfig, getMockConfig, getMockConfig);
-  // The mock ledger isn't a React store; re-read its counter while the panel is open.
-  const [, setTick] = useState(0);
+  const config = useSyncExternalStore(subscribeMockConfig, getMockConfig);
+
+  // The mock database isn't React state, so re-read its counter once a second while the panel is open.
+  const [, tick] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setTick((n) => n + 1), 1000);
+    const t = setInterval(() => tick((n) => n + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
-  const pct = (n: number) => percentFormatter.format(n);
+  const slider = (id: string, text: string, value: number, display: string, max: number, step: number, onChange: (v: number) => void) => (
+    <div>
+      <label htmlFor={id} className="mb-1 flex justify-between gap-2 text-sm font-semibold">
+        {text} <output htmlFor={id}>{display}</output>
+      </label>
+      <input id={id} type="range" min={0} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-gold-500" />
+    </div>
+  );
 
   return (
-    <section className="mock-panel" aria-labelledby={`${id}-title`} id="mock-panel">
-      <div className="mock-panel__header">
-        <h2 id={`${id}-title`}>
-          <Icon name="sliders" size={18} /> Mock API controls
+    <section id="mock-panel" aria-labelledby="mock-title" className="mt-4 rounded-2xl border-2 border-dashed border-gold-500 bg-white p-4 dark:bg-navy-900">
+      <div className="flex items-center justify-between">
+        <h2 id="mock-title" className="flex items-center gap-2 font-bold">
+          <SlidersHorizontal aria-hidden className="size-4" /> Mock API controls
         </h2>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Close mock API controls">
-          <Icon name="close" size={18} />
+        <button type="button" className={btnGhost} onClick={onClose} aria-label="Close mock API controls">
+          <X aria-hidden className="size-5" />
         </button>
       </div>
-      <p className="mock-panel__intro">
-        There’s no real backend — requests are served by MSW in your browser. Tune the network to exercise loading, error
-        and reconciliation paths.
-      </p>
+      <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">No real backend: requests are answered by MSW in your browser.</p>
 
-      <div className="mock-panel__grid">
-        <div className="field field--compact">
-          <label htmlFor={`${id}-latency`}>
-            Latency <output htmlFor={`${id}-latency`}>{config.maxLatencyMs} ms</output>
-          </label>
-          <input
-            id={`${id}-latency`}
-            type="range"
-            min={0}
-            max={5000}
-            step={100}
-            value={config.maxLatencyMs}
-            onChange={(e) => {
-              const max = Number(e.target.value);
-              setMockConfig({ maxLatencyMs: max, minLatencyMs: Math.round(max * 0.3) });
-            }}
-          />
-        </div>
-
-        <div className="field field--compact">
-          <label htmlFor={`${id}-fail`}>
-            Failure rate (503 before processing) <output htmlFor={`${id}-fail`}>{pct(config.failureRate)}</output>
-          </label>
-          <input
-            id={`${id}-fail`}
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={config.failureRate}
-            onChange={(e) => setMockConfig({ failureRate: Number(e.target.value) })}
-          />
-        </div>
-
-        <div className="field field--compact">
-          <label htmlFor={`${id}-lost`}>
-            Lost response (transfer commits, reply dropped) <output htmlFor={`${id}-lost`}>{pct(config.lostResponseRate)}</output>
-          </label>
-          <input
-            id={`${id}-lost`}
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={config.lostResponseRate}
-            onChange={(e) => setMockConfig({ lostResponseRate: Number(e.target.value) })}
-          />
-        </div>
-
-        <label className="checkbox">
-          <input type="checkbox" checked={config.liveInflows} onChange={(e) => setMockConfig({ liveInflows: e.target.checked })} />
-          Simulate live customer payments
-        </label>
+      <div className="grid gap-4 lg:grid-cols-3">
+        {slider('mock-latency', 'Latency', config.maxLatencyMs, `${config.maxLatencyMs} ms`, 5000, 100, (v) => setMockConfig({ maxLatencyMs: v, minLatencyMs: Math.round(v * 0.3) }))}
+        {slider('mock-fail', 'Failure rate', config.failureRate, percent.format(config.failureRate), 1, 0.05, (v) => setMockConfig({ failureRate: v }))}
+        {slider('mock-lost', 'Lost response (committed, reply dropped)', config.lostResponseRate, percent.format(config.lostResponseRate), 1, 0.05, (v) => setMockConfig({ lostResponseRate: v }))}
       </div>
 
-      <div className="mock-panel__actions">
+      <div className="mt-4 flex flex-wrap items-center gap-3">
         <button
           type="button"
-          className="btn btn--secondary btn--sm"
+          className={btnSecondary}
           onClick={() => {
             db.receivePayment();
             void qc.invalidateQueries({ queryKey: queryKeys.balance });
@@ -105,11 +58,9 @@ export function MockControls({ onClose }: { onClose: () => void }) {
         >
           Receive a payment now
         </button>
-        <button type="button" className="btn btn--ghost btn--sm" onClick={() => setMockConfig(DEFAULT_MOCK_CONFIG)}>
-          Reset network settings
-        </button>
-        <span className="mock-panel__stat">
-          Server committed <strong data-testid="committed-count">{db.committedTransfers}</strong> transfer(s) this session
+        <button type="button" className={btnGhost} onClick={() => setMockConfig(DEFAULT_MOCK_CONFIG)}>Reset</button>
+        <span className="text-sm text-slate-600 dark:text-slate-400">
+          Server committed <strong data-testid="committed-count">{db.committedTransfers}</strong> transfer(s)
         </span>
       </div>
     </section>

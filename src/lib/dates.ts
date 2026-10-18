@@ -13,18 +13,8 @@ const dateTimeFormatter = new Intl.DateTimeFormat('en-NG', {
   minute: '2-digit',
 });
 
-const fullFormatter = new Intl.DateTimeFormat('en-NG', {
-  timeZone: BUSINESS_TZ,
-  dateStyle: 'full',
-  timeStyle: 'short',
-});
-
 export function formatTxDate(iso: string): string {
   return dateTimeFormatter.format(new Date(iso));
-}
-
-export function formatTxDateLong(iso: string): string {
-  return fullFormatter.format(new Date(iso));
 }
 
 /** yyyy-mm-dd of the Lagos calendar day containing `date`. */
