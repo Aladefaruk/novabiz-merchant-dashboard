@@ -166,6 +166,7 @@ The final direction retained the search and date-range functionality while resto
 | Incorrect Storybook mock-handler setup | Prevented the server-down scenario from loading the required mock bank list. | Corrected the MSW 2 handler setup and checked the stories in the browser. The same review identified a dark-mode contrast issue, which was fixed. |
 | Balance totals breaking across lines on mobile | Could make a financial amount difficult to read. | Displayed the totals in separate rows on narrow screens and prevented amounts from wrapping. |
 
+
 ## What This Project Taught Me About AI-Assisted Development
 
 AI is effective at producing a first implementation quickly, but a plausible implementation is not necessarily the correct one.
