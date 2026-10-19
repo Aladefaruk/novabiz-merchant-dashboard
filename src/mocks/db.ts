@@ -6,11 +6,11 @@ import type {
   TransactionPage,
   TransferRequest,
   TransferResponse,
-} from '../api/types';
-import { lagosDateKey, lagosDayEnd, lagosDayStart } from '../lib/dates';
-import { TRANSFER_LIMITS, nipTransferFee } from '../lib/fees';
-import { toKobo } from '../lib/money';
-import { maskAccountNumber } from '../lib/sanitize';
+} from '../shared/api/types';
+import { lagosDateKey, lagosDayEnd, lagosDayStart } from '../shared/lib/dates';
+import { TRANSFER_LIMITS, nipTransferFee } from '../shared/lib/fees';
+import { toKobo } from '../shared/lib/money';
+import { maskAccountNumber } from '../shared/lib/sanitize';
 import { BANKS, generateTransactions, makeCredit, makeReference, mulberry32 } from './seed';
 
 /**
@@ -91,9 +91,16 @@ class MockDb {
   list(filters: TransactionFilters, cursor: string | null, limit: number): TransactionPage {
     const from = filters.from ? lagosDayStart(filters.from).getTime() : -Infinity;
     const to = filters.to ? lagosDayEnd(filters.to).getTime() : Infinity;
+    const q = filters.q?.trim().toLowerCase();
     const matching = this.transactions.filter((tx) => {
       const t = Date.parse(tx.createdAt);
-      return t >= from && t < to && (!filters.status || tx.status === filters.status) && (!filters.type || tx.type === filters.type);
+      return (
+        t >= from &&
+        t < to &&
+        (!filters.status || tx.status === filters.status) &&
+        (!filters.type || tx.type === filters.type) &&
+        (!q || [tx.counterparty.name, tx.description, tx.reference].some((field) => field.toLowerCase().includes(q)))
+      );
     });
 
     let startIndex = 0;

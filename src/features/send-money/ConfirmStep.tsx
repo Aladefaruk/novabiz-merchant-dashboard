@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { Money } from '../../components/Money';
-import { btnGhost, btnPrimary, errorText, hint, input, label } from '../../components/ui';
-import type { Kobo } from '../../lib/money';
+import { Money } from '../../shared/components/Money';
+import { btnGhost, btnPrimary, errorText, hint, input, label } from '../../shared/components/ui';
+import type { Kobo } from '../../shared/lib/money';
 import type { StepProps } from './SendMoney';
 
 interface Props extends StepProps {

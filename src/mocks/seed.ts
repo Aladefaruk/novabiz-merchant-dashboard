@@ -1,7 +1,7 @@
-import type { Bank, Transaction, TxChannel, TxStatus } from '../api/types';
-import { nipTransferFee } from '../lib/fees';
-import { toKobo } from '../lib/money';
-import { maskAccountNumber } from '../lib/sanitize';
+import type { Bank, Transaction, TxChannel, TxStatus } from '../shared/api/types';
+import { nipTransferFee } from '../shared/lib/fees';
+import { toKobo } from '../shared/lib/money';
+import { maskAccountNumber } from '../shared/lib/sanitize';
 
 /** Deterministic PRNG so every run (and every test) sees the same dataset. */
 export function mulberry32(seed: number) {

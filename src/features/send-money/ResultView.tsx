@@ -1,11 +1,11 @@
 import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import type { UseMutationResult } from '@tanstack/react-query';
-import type { ApiError } from '../../api/client';
-import type { TransferResponse } from '../../api/types';
-import { Money } from '../../components/Money';
-import { btnGhost, btnPrimary } from '../../components/ui';
-import { MAX_TRANSFER_ATTEMPTS, type TransferVariables } from '../../hooks/useTransfer';
-import type { Kobo } from '../../lib/money';
+import type { ApiError } from '../../shared/api/client';
+import type { TransferResponse } from '../../shared/api/types';
+import { Money } from '../../shared/components/Money';
+import { btnGhost, btnPrimary } from '../../shared/components/ui';
+import { MAX_TRANSFER_ATTEMPTS, type TransferVariables } from './useTransfer';
+import type { Kobo } from '../../shared/lib/money';
 import type { StepProps } from './SendMoney';
 
 interface Props extends StepProps {

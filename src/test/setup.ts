@@ -1,12 +1,13 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
-import { transferRetryConfig } from '../hooks/useTransfer';
+import { transferRetryConfig } from '../features/send-money/useTransfer';
 import { DEFAULT_MOCK_CONFIG, setMockConfig } from '../mocks/config';
 import { db } from '../mocks/db';
 import { server } from '../mocks/server';
 
 // jsdom gaps
 window.scrollTo = (() => {}) as typeof window.scrollTo;
+Element.prototype.scrollIntoView = () => {};
 if (!window.matchMedia) {
   window.matchMedia = ((query: string) => ({
     matches: false,

@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, Loader2 } from 'lucide-react';
 import { useFormContext } from 'react-hook-form';
-import { ApiError } from '../../api/client';
-import { api, queryKeys } from '../../api/endpoints';
-import { friendlyError } from '../../components/AsyncStates';
-import { btnPrimary, errorText, hint, input, label } from '../../components/ui';
+import { ApiError } from '../../shared/api/client';
+import { api, queryKeys } from '../../shared/api/endpoints';
+import { friendlyError } from '../../shared/components/AsyncStates';
+import { btnPrimary, errorText, hint, input, label } from '../../shared/components/ui';
 import type { StepProps } from './SendMoney';
 import type { TransferForm } from './schema';
 

@@ -1,6 +1,6 @@
 import { HttpResponse, delay, http } from 'msw';
-import type { TransactionFilters, TransferRequest, TxStatus, TxType } from '../api/types';
-import { isValidDateKey } from '../lib/dates';
+import type { TransactionFilters, TransferRequest, TxStatus, TxType } from '../shared/api/types';
+import { isValidDateKey } from '../shared/lib/dates';
 import { getMockConfig } from './config';
 import { BANKS } from './seed';
 import { db } from './db';
@@ -41,6 +41,8 @@ export const handlers = [
     if (to && isValidDateKey(to)) filters.to = to;
     if (status && STATUSES.includes(status)) filters.status = status;
     if (type && TYPES.includes(type)) filters.type = type;
+    const q = params.get('q')?.trim().slice(0, 60);
+    if (q) filters.q = q;
     const limit = Math.min(100, Math.max(1, Number(params.get('limit')) || 50));
     return HttpResponse.json(db.list(filters, params.get('cursor'), limit));
   }),

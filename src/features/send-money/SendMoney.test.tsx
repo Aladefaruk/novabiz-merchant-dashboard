@@ -1,8 +1,8 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { HttpResponse, http } from 'msw';
-import { App } from '../../App';
-import { formatNaira, toKobo } from '../../lib/money';
+import { App } from '../../app/App';
+import { formatNaira, toKobo } from '../../shared/lib/money';
 import { setMockConfig } from '../../mocks/config';
 import { db } from '../../mocks/db';
 import { server } from '../../mocks/server';

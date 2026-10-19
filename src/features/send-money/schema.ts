@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { TRANSFER_LIMITS, nipTransferFee } from '../../lib/fees';
-import { addKobo, formatNaira, parseNairaInput, type Kobo } from '../../lib/money';
+import { TRANSFER_LIMITS, nipTransferFee } from '../../shared/lib/fees';
+import { addKobo, formatNaira, parseNairaInput, type Kobo } from '../../shared/lib/money';
 
 /** Static field rules. Balance-dependent rules are in checkAmount() below. */
 export const transferSchema = z.object({

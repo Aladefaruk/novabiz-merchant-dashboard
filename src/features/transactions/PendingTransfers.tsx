@@ -1,7 +1,7 @@
 import { Send } from 'lucide-react';
-import { Money } from '../../components/Money';
-import { StatusBadge } from '../../components/StatusBadge';
-import { usePendingTransfers } from '../../hooks/useTransfer';
+import { Money } from '../../shared/components/Money';
+import { StatusBadge } from '../../shared/components/StatusBadge';
+import { usePendingTransfers } from '../send-money/useTransfer';
 
 /** Optimistic rows: transfers submitted but not yet confirmed by the server. */
 export function PendingTransfers() {

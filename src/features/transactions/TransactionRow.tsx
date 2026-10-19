@@ -1,10 +1,10 @@
 import { ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { memo } from 'react';
-import type { Transaction } from '../../api/types';
-import { Money } from '../../components/Money';
-import { StatusBadge } from '../../components/StatusBadge';
-import { formatTxDate } from '../../lib/dates';
-import { toSafeDisplayText } from '../../lib/sanitize';
+import type { Transaction } from '../../shared/api/types';
+import { Money } from '../../shared/components/Money';
+import { StatusBadge } from '../../shared/components/StatusBadge';
+import { formatTxDate } from '../../shared/lib/dates';
+import { toSafeDisplayText } from '../../shared/lib/sanitize';
 
 /**
  * memo: the virtualizer re-renders on scroll; a row only re-renders when its own transaction changes.
@@ -51,7 +51,7 @@ export const TransactionRow = memo(function TransactionRow({ tx, index, total }:
         <Money
           kobo={isCredit ? tx.amountKobo : -tx.amountKobo}
           signed
-          className={`font-bold ${tx.status === 'failed' ? 'text-slate-500 line-through' : isCredit ? 'text-green-700 dark:text-green-400' : ''}`}
+          className={`font-bold ${tx.status === 'failed' ? 'text-slate-500 line-through dark:text-slate-400' : isCredit ? 'text-green-700 dark:text-green-400' : ''}`}
         />
         {tx.feeKobo > 0 && (
           <span className="text-xs text-slate-600 dark:text-slate-400">

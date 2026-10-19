@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import { ApiError, backoffDelay } from './api/client';
+import { ApiError, backoffDelay } from '../shared/api/client';
 
 export function createQueryClient(opts: { test?: boolean } = {}) {
   return new QueryClient({

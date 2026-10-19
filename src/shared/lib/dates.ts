@@ -35,3 +35,26 @@ export function lagosDayEnd(dateKey: string): Date {
 export function isValidDateKey(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const dayLabel = new Intl.DateTimeFormat('en-NG', { timeZone: 'UTC', day: 'numeric', month: 'short' });
+
+/** yyyy-mm-dd shifted by whole days ("2026-10-18", -6 -> "2026-10-12"). */
+export function addDaysToKey(dateKey: string, days: number): string {
+  return new Date(Date.parse(`${dateKey}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
+}
+
+/** "2026-10-18" -> "18 Oct" (the key is already a Lagos day, so no timezone shift). */
+export function formatDateKey(dateKey: string): string {
+  return dayLabel.format(new Date(`${dateKey}T00:00:00Z`));
+}
+
+/** The date picker works in the device's local calendar; these convert its days to and from keys. */
+export function localDateToKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+export function keyToLocalDate(dateKey: string): Date {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return new Date(y!, m! - 1, d!);
+}

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { api, queryKeys } from '../api/endpoints';
-import { toKobo, type Kobo } from '../lib/money';
-import { usePendingTransfers } from './useTransfer';
+import { api, queryKeys } from '../../shared/api/endpoints';
+import { toKobo, type Kobo } from '../../shared/lib/money';
+import { usePendingTransfers } from '../send-money/useTransfer';
 
 export const BALANCE_POLL_MS = 15_000;
 

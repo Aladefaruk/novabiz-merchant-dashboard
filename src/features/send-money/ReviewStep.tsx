@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
-import { Money } from '../../components/Money';
-import { btnGhost, btnPrimary } from '../../components/ui';
-import { useBalance } from '../../hooks/useBalance';
-import { addKobo, toKobo, type Kobo } from '../../lib/money';
-import { toSafeDisplayText } from '../../lib/sanitize';
+import { Money } from '../../shared/components/Money';
+import { btnGhost, btnPrimary } from '../../shared/components/ui';
+import { useBalance } from '../balance/useBalance';
+import { addKobo, toKobo, type Kobo } from '../../shared/lib/money';
+import { toSafeDisplayText } from '../../shared/lib/sanitize';
 import type { StepProps } from './SendMoney';
 
 interface Props extends StepProps {

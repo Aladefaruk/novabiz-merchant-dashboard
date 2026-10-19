@@ -1,8 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { SlidersHorizontal, X } from 'lucide-react';
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { queryKeys } from '../../api/endpoints';
-import { btnGhost, btnSecondary } from '../../components/ui';
+import { queryKeys } from '../../shared/api/endpoints';
+import { btnGhost, btnSecondary } from '../../shared/components/ui';
 import { DEFAULT_MOCK_CONFIG, getMockConfig, setMockConfig, subscribeMockConfig } from '../../mocks/config';
 import { db } from '../../mocks/db';
 

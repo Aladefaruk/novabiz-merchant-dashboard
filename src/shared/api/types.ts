@@ -44,6 +44,8 @@ export interface TransactionFilters {
   to?: string; // yyyy-mm-dd (Lagos), inclusive
   status?: TxStatus;
   type?: TxType;
+  /** Free-text search over counterparty name, narration and reference. */
+  q?: string;
 }
 
 export interface TransactionPage {

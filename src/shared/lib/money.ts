@@ -17,17 +17,6 @@ export function addKobo(a: Kobo, b: Kobo): Kobo {
   return toKobo(a + b);
 }
 
-/**
- * 100050 -> "1000.50", using integer remainder maths only (never kobo / 100).
- */
-export function koboToDecimalString(amount: Kobo): string {
-  const sign = amount < 0 ? '-' : '';
-  const abs = Math.abs(amount);
-  const kobo = abs % 100;
-  const naira = (abs - kobo) / 100; // exact: abs - kobo is a multiple of 100
-  return `${sign}${naira}.${String(kobo).padStart(2, '0')}`;
-}
-
 const formatter = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', minimumFractionDigits: 2 });
 const signedFormatter = new Intl.NumberFormat('en-NG', {
   style: 'currency',
@@ -38,12 +27,13 @@ const signedFormatter = new Intl.NumberFormat('en-NG', {
 
 /**
  * 100050 -> "₦1,000.50".
- * Intl.NumberFormat accepts an exact decimal *string* (ES2023), so the value is
- * never a binary float at any point. Intl does the symbol and comma grouping.
+ * "100050e-2" means "move the decimal point two places left". Intl.NumberFormat reads
+ * a numeric string exactly (ES2023), so we never divide by 100 and no float ever exists.
+ * Intl does the ₦ symbol, the commas and the 2 decimal places.
  */
 export function formatNaira(amount: Kobo, { signed = false } = {}): string {
   // TypeScript's lib types lag the spec here; the cast only affects types.
-  return (signed ? signedFormatter : formatter).format(koboToDecimalString(amount) as unknown as number);
+  return (signed ? signedFormatter : formatter).format(`${amount}e-2` as unknown as number);
 }
 
 /**

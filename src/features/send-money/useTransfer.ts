@@ -1,7 +1,7 @@
 import { notifyManager, useMutation, useQuery, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query';
-import { ApiError, backoffDelay } from '../api/client';
-import { api, mutationKeys, queryKeys } from '../api/endpoints';
-import type { BalanceSummary, TransactionPage, TransferRequest, TransferResponse } from '../api/types';
+import { ApiError, backoffDelay } from '../../shared/api/client';
+import { api, mutationKeys, queryKeys } from '../../shared/api/endpoints';
+import type { BalanceSummary, TransactionPage, TransferRequest, TransferResponse } from '../../shared/api/types';
 
 /** One transfer intent. The idempotency key is created once per intent and reused on every retry. */
 export interface TransferVariables extends TransferRequest {
@@ -18,7 +18,7 @@ export interface PendingTransfer {
   narration: string;
 }
 
-const OUTBOX_KEY = ['transfer-outbox'] as const;
+export const OUTBOX_KEY = ['transfer-outbox'] as const;
 export const MAX_TRANSFER_ATTEMPTS = 3;
 
 /** Tests set this to () => 0 so they don't wait for real backoff. */
@@ -111,7 +111,9 @@ export function useTransfer() {
         if (fresh) qc.setQueryData(queryKeys.balance, fresh);
       });
       if (!fresh) void qc.invalidateQueries({ queryKey: queryKeys.balance });
-      await refreshFeedHead(qc);
+      // Don't await: the feed refresh retries with backoff on a bad network, and the
+      // merchant shouldn't be left on "attempt 3 of 3" while it does. The result shows now.
+      void refreshFeedHead(qc);
     },
   });
 }

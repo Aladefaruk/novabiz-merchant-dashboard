@@ -32,3 +32,20 @@
     outline: none;
   }
 }
+
+/* Date range calendar (react-day-picker): brand colours, and 38px days so 7 columns fit a 360px phone.
+   `:root .rdp-root` outranks the library's own `.rdp-root` defaults. */
+:root .rdp-root {
+  --rdp-accent-color: var(--color-navy-800);
+  --rdp-accent-background-color: #dfe6f0;
+  --rdp-day-height: 38px;
+  --rdp-day-width: 38px;
+  --rdp-day_button-height: 36px;
+  --rdp-day_button-width: 36px;
+}
+:root[data-theme='dark'] .rdp-root {
+  --rdp-accent-color: var(--color-gold-400);
+  --rdp-accent-background-color: rgb(212 166 42 / 0.2);
+  --rdp-range_start-color: var(--color-navy-950);
+  --rdp-range_end-color: var(--color-navy-950);
+}

@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { setMockConfig } from '../../mocks/config';
 import { db } from '../../mocks/db';
@@ -15,6 +15,16 @@ describe('TransactionFeed', () => {
     expect(times).toEqual([...times].sort().reverse());
     // 50 rows were fetched, far fewer are in the DOM.
     expect(rows.length).toBeLessThan(50);
+  });
+
+  it('searches by name, narration or reference', async () => {
+    const target = db.transactions[42]!;
+    renderWithProviders(<TransactionFeed />);
+    await screen.findByRole('feed');
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), target.reference);
+    await waitFor(() => expect(within(screen.getByRole('feed')).getAllByRole('article')).toHaveLength(1));
+    expect(within(screen.getByRole('feed')).getByText(target.counterparty.name)).toBeInTheDocument();
   });
 
   it('renders hostile descriptions as plain text, never HTML', async () => {

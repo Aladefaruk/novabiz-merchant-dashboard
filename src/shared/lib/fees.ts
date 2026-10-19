@@ -18,6 +18,9 @@ export function nipTransferFee(amount: Kobo): Kobo {
   return toKobo(tier.fee);
 }
 
+/** The demo merchant's KYC tier (BVN/NIN verified). The limits below assume it. */
+export const MERCHANT_KYC_TIER = 3;
+
 /** Business limits for the demo merchant (assumed KYC Tier 3 corporate wallet). */
 export const TRANSFER_LIMITS = {
   minKobo: toKobo(100_00), // ₦100

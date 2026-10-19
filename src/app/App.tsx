@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Header } from './components/Header';
-import { OfflineBanner } from './components/OfflineBanner';
-import { BalanceSummary } from './features/balance/BalanceSummary';
-import { MockControls } from './features/dev-panel/MockControls';
-import { SendMoney } from './features/send-money/SendMoney';
-import { TransactionFeed } from './features/transactions/TransactionFeed';
-import { useTheme } from './hooks/useTheme';
+import { Header } from '../shared/components/Header';
+import { OfflineBanner } from '../shared/components/OfflineBanner';
+import { BalanceSummary } from '../features/balance/BalanceSummary';
+import { MockControls } from '../features/dev-panel/MockControls';
+import { SendMoney } from '../features/send-money/SendMoney';
+import { TransactionFeed } from '../features/transactions/TransactionFeed';
+import { useTheme } from '../shared/hooks/useTheme';
 
 export function App() {
   const { theme, toggle } = useTheme();

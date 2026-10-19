@@ -1,22 +1,28 @@
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { Loader2, RefreshCw } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { api, queryKeys } from '../../api/endpoints';
-import type { TransactionFilters } from '../../api/types';
-import { EmptyState, ErrorState, Skeleton } from '../../components/AsyncStates';
-import { btnGhost, btnSecondary, card } from '../../components/ui';
-import { refreshFeedHead } from '../../hooks/useTransfer';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { api, queryKeys } from '../../shared/api/endpoints';
+import type { TransactionFilters } from '../../shared/api/types';
+import { EmptyState, ErrorState, Skeleton } from '../../shared/components/AsyncStates';
+import { btnGhost, btnSecondary, card } from '../../shared/components/ui';
+import { refreshFeedHead } from '../send-money/useTransfer';
 import { FeedFilters } from './FeedFilters';
 import { PendingTransfers } from './PendingTransfers';
 import { TransactionRow } from './TransactionRow';
 
 const ROW_HEIGHT = 76; // fixed height on every screen size keeps virtualization simple
 
+/** Drop empty values so "no filter" is always `undefined`, never "". */
+function withoutEmpty(filters: TransactionFilters): TransactionFilters {
+  return Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== '')) as TransactionFilters;
+}
+
 export function TransactionFeed() {
   const qc = useQueryClient();
   const [filters, setFilters] = useState<TransactionFilters>({});
-  const rangeInvalid = Boolean(filters.from && filters.to && filters.from > filters.to);
+  const updateFilters = useCallback((patch: Partial<TransactionFilters>) => setFilters((f) => withoutEmpty({ ...f, ...patch })), []);
+  const clearFilters = useCallback(() => setFilters({}), []);
 
   const { data, isPending, isError, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } =
     useInfiniteQuery({
@@ -24,7 +30,6 @@ export function TransactionFeed() {
       queryFn: ({ pageParam, signal }) => api.getTransactions(filters, pageParam, signal),
       initialPageParam: null as string | null,
       getNextPageParam: (last) => last.nextCursor,
-      enabled: !rangeInvalid,
     });
 
   const items = useMemo(() => data?.pages.flatMap((p) => p.items) ?? [], [data]);
@@ -49,7 +54,6 @@ export function TransactionFeed() {
   }, [lastIndex, items.length, hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
 
   const renderBody = () => {
-    if (rangeInvalid) return null;
     if (isPending) {
       return (
         <div aria-busy="true" className="space-y-3">
@@ -66,11 +70,13 @@ export function TransactionFeed() {
       return <ErrorState title="We couldn’t load your transactions" error={error} onRetry={() => void refetch()} />;
     }
     if (items.length === 0) {
-      return Object.keys(filters).some((k) => filters[k as keyof TransactionFilters]) ? (
+      return Object.keys(filters).length > 0 ? (
         <EmptyState
-          title="No transactions match these filters"
-          action={<button type="button" className={btnSecondary} onClick={() => setFilters({})}>Clear filters</button>}
-        />
+          title="No transactions match"
+          action={<button type="button" className={btnSecondary} onClick={clearFilters}>Clear filters</button>}
+        >
+          Try another search or a wider date range.
+        </EmptyState>
       ) : (
         <EmptyState title="No transactions yet">Share your NovaBiz QR code to start receiving payments.</EmptyState>
       );
@@ -119,7 +125,7 @@ export function TransactionFeed() {
           <RefreshCw aria-hidden className="size-4" /> Refresh
         </button>
       </div>
-      <FeedFilters filters={filters} onChange={setFilters} rangeInvalid={rangeInvalid} />
+      <FeedFilters filters={filters} onChange={updateFilters} onClear={clearFilters} />
       <PendingTransfers />
       {renderBody()}
     </section>
